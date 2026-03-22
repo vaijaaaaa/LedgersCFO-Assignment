@@ -1,36 +1,100 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# LedgersCFO Compliance Task Tracker
 
-## Getting Started
+A minimal full-stack web app to manage compliance tasks for multiple clients.
 
-First, run the development server:
+## Features
+
+- Client list with selection
+- Add new clients dynamically
+- Task list for selected client
+- Add new task
+- Update task status
+- Filter by status and category
+- Overdue pending task highlighting
+- Persistent storage using a local JSON database
+- Clean UI built with reusable shadcn-style components
+
+## Tech Stack
+
+- Next.js 16 (App Router)
+- React 19
+- TypeScript
+- Tailwind CSS v4
+- shadcn-style UI component layer (`components/ui/*`)
+
+## Local Setup
+
+1. Install dependencies
+
+```bash
+npm install
+```
+
+2. Run development server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+3. Open app
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```text
+http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Build & Run (Production)
 
-## Learn More
+```bash
+npm run build
+npm run start
+```
 
-To learn more about Next.js, take a look at the following resources:
+## API Endpoints
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `GET /api/clients`
+	- Returns all clients
+- `POST /api/clients`
+	- Creates a client with basic validation
+- `GET /api/clients/:clientId/tasks`
+	- Returns all tasks for one client
+- `POST /api/clients/:clientId/tasks`
+	- Creates a task with basic validation
+- `PATCH /api/tasks/:taskId/status`
+	- Updates task status with validation
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Data Storage
 
-## Deploy on Vercel
+- Seed and persistent data file: `data/db.json`
+- File-based storage chosen to keep setup fast and simple while still persistent.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deployment (Vercel)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Push this repo to GitHub
+2. Import the GitHub repo into Vercel
+3. Deploy with default settings
+
+Alternative CLI deployment:
+
+```bash
+npm i -g vercel
+vercel
+```
+
+## Tradeoffs
+
+- Used JSON file storage instead of a DB to keep implementation under a day
+- No auth/multi-user access since requirement focused on core task flow
+- Basic server-side validation and error handling, not enterprise-grade rules engine
+
+## Assumptions
+
+- Single internal team user context
+- Compliance dates are managed in local date format (`YYYY-MM-DD`)
+- Status workflow is limited to `Pending`, `In Progress`, and `Completed`
+
+## Submission Checklist
+
+- [ ] Deployed app link
+- [ ] GitHub repo link with commit history
+- [x] Setup instructions
+- [x] Tradeoffs and assumptions

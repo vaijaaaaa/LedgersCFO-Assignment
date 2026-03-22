@@ -1,0 +1,96 @@
+{
+  "clients": [
+    {
+      "id": "client-001",
+      "company_name": "Northstar Logistics Pvt Ltd",
+      "country": "India",
+      "entity_type": "Private Limited"
+    },
+    {
+      "id": "client-002",
+      "company_name": "BluePeak Analytics LLC",
+      "country": "United States",
+      "entity_type": "LLC"
+    },
+    {
+      "id": "client-003",
+      "company_name": "Harborview Retail Ltd",
+      "country": "United Kingdom",
+      "entity_type": "Limited"
+    },
+    {
+      "id": "9095e50b-15e8-429b-a80e-540822445103",
+      "company_name": "Testing",
+      "country": "india",
+      "entity_type": "Private"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-001",
+      "client_id": "client-001",
+      "title": "GST Return Filing",
+      "description": "File monthly GST return for February.",
+      "category": "Tax",
+      "due_date": "2026-03-10",
+      "status": "Pending",
+      "priority": "High",
+      "created_at": "2026-03-01T10:00:00.000Z"
+    },
+    {
+      "id": "task-002",
+      "client_id": "client-001",
+      "title": "Board Resolution Update",
+      "description": "Upload signed board resolution.",
+      "category": "Filings",
+      "due_date": "2026-03-28",
+      "status": "In Progress",
+      "priority": "Medium",
+      "created_at": "2026-03-02T09:00:00.000Z"
+    },
+    {
+      "id": "task-003",
+      "client_id": "client-002",
+      "title": "Quarterly Payroll Tax",
+      "description": "Submit Q1 payroll compliance details.",
+      "category": "Tax",
+      "due_date": "2026-04-15",
+      "status": "Pending",
+      "priority": "High",
+      "created_at": "2026-03-05T15:00:00.000Z"
+    },
+    {
+      "id": "task-004",
+      "client_id": "client-003",
+      "title": "Annual Confirmation Statement",
+      "description": "Prepare and file annual statement.",
+      "category": "Filings",
+      "due_date": "2026-03-18",
+      "status": "Completed",
+      "priority": "Medium",
+      "created_at": "2026-03-03T08:30:00.000Z"
+    },
+    {
+      "id": "79f8cb42-3591-4448-8970-95ff3c16d012",
+      "client_id": "client-003",
+      "title": "testing",
+      "description": "hello",
+      "category": "hh",
+      "due_date": "2026-03-22",
+      "status": "Completed",
+      "priority": "Medium",
+      "created_at": "2026-03-22T16:23:29.180Z"
+    },
+    {
+      "id": "fd1df6e5-086b-45e5-b98e-643f2fee780a",
+      "client_id": "9095e50b-15e8-429b-a80e-540822445103",
+      "title": "h",
+      "description": "ghn",
+      "category": "nh",
+      "due_date": "2026-03-22",
+      "status": "Pending",
+      "priority": "Medium",
+      "created_at": "2026-03-22T16:30:53.546Z"
+    }
+  ]
+}
