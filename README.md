@@ -64,26 +64,20 @@ npm run start
 
 ## Data Storage
 
-- Production persistence: Vercel KV (`@vercel/kv`)
+- Production persistence: Supabase Postgres (`@supabase/supabase-js`)
 - Local development fallback: `data/db.json`
-- On first KV run, app seeds KV from `data/db.json` if KV keys are empty.
+- SQL schema file: `supabase-schema.sql`
 
-### Vercel KV Setup (Required for deployed writes)
+### Supabase Setup (Required for deployed writes)
 
-1. In Vercel project dashboard, add a **KV** database
-2. Connect KV to this project
-3. Ensure these environment variables exist in Vercel:
-	- `KV_REST_API_URL`
-	- `KV_REST_API_TOKEN`
+1. Create a Supabase project
+2. In Supabase SQL Editor, run `supabase-schema.sql`
+3. In Vercel project environment variables, set:
+	- `SUPABASE_URL`
+	- `SUPABASE_SERVICE_ROLE_KEY`
 4. Redeploy
 
-If you connected **Upstash Redis** from Marketplace, you can keep its default vars:
-- `UPSTASH_REDIS_REST_URL`
-- `UPSTASH_REDIS_REST_TOKEN`
-
-The app now auto-maps Upstash vars to KV runtime config.
-
-Without KV env vars, app falls back to local JSON storage (works locally, not for persistent writes on serverless deploys).
+Without Supabase env vars, app falls back to local JSON storage (works locally, not for persistent writes on serverless deploys).
 
 ## Deployment (Vercel)
 

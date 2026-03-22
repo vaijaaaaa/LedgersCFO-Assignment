@@ -13,52 +13,52 @@ import type {
 
 const dataDirectoryPath = path.join(process.cwd(), "data");
 const databaseFilePath = path.join(dataDirectoryPath, "db.json");
-const clientsKey = "compliance:clients";
-const tasksKey = "compliance:tasks";
+const isSupabaseConfigured = Boolean(
+  process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY,
+);
 
 const defaultDatabase: DatabaseShape = {
   clients: [],
   tasks: [],
 };
 
-interface KvClient {
-  get<T>(key: string): Promise<T | null>;
-  set(key: string, value: unknown): Promise<unknown>;
-}
-
-function resolveKvCredentials() {
-  const url = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN;
-
-  return {
-    url,
-    token,
+interface SupabaseAdminClient {
+  from: (table: string) => {
+    select: (columns?: string) => {
+      order: (column: string, options?: { ascending?: boolean }) => Promise<{ data: unknown[] | null; error: { message: string } | null }>;
+      eq: (column: string, value: string) => {
+        order: (orderColumn: string, options?: { ascending?: boolean }) => Promise<{ data: unknown[] | null; error: { message: string } | null }>;
+      };
+      single: () => Promise<{ data: unknown | null; error: { message: string } | null }>;
+    };
+    insert: (value: unknown | unknown[]) => {
+      select: (columns?: string) => {
+        single: () => Promise<{ data: unknown | null; error: { message: string } | null }>;
+      };
+    };
+    update: (value: unknown) => {
+      eq: (column: string, matchValue: string) => {
+        select: (columns?: string) => {
+          single: () => Promise<{ data: unknown | null; error: { message: string } | null }>;
+        };
+      };
+    };
   };
 }
 
-function ensureKvEnvAliases() {
-  if (!process.env.KV_REST_API_URL && process.env.UPSTASH_REDIS_REST_URL) {
-    process.env.KV_REST_API_URL = process.env.UPSTASH_REDIS_REST_URL;
-  }
-
-  if (!process.env.KV_REST_API_TOKEN && process.env.UPSTASH_REDIS_REST_TOKEN) {
-    process.env.KV_REST_API_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
-  }
-}
-
-function isKvConfigured() {
-  const { url, token } = resolveKvCredentials();
-  return Boolean(url && token);
-}
-
-async function getKvClient(): Promise<KvClient> {
-  ensureKvEnvAliases();
-
+async function getSupabaseClient(): Promise<SupabaseAdminClient> {
   const dynamicImport = new Function("modulePath", "return import(modulePath)") as (
     modulePath: string,
-  ) => Promise<{ kv: KvClient }>;
-  const module = await dynamicImport("@vercel/kv");
-  return module.kv as KvClient;
+  ) => Promise<{ createClient: (url: string, key: string, options: unknown) => SupabaseAdminClient }>;
+  const module = await dynamicImport("@supabase/supabase-js");
+
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("Supabase environment variables are missing.");
+  }
+
+  return module.createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false },
+  });
 }
 
 function normalizeDatabase(value: Partial<DatabaseShape> | null | undefined): DatabaseShape {
@@ -78,41 +78,7 @@ async function ensureDatabaseExists() {
   }
 }
 
-async function readDatabase(): Promise<DatabaseShape> {
-  if (isKvConfigured()) {
-    const kv = await getKvClient();
-    const [kvClients, kvTasks] = await Promise.all([
-      kv.get<Client[]>(clientsKey),
-      kv.get<ComplianceTask[]>(tasksKey),
-    ]);
-
-    const hasClients = Array.isArray(kvClients);
-    const hasTasks = Array.isArray(kvTasks);
-
-    if (hasClients && hasTasks) {
-      return {
-        clients: kvClients,
-        tasks: kvTasks,
-      };
-    }
-
-    const seedData = await readSeedDatabase();
-    const hydratedData: DatabaseShape = {
-      clients: hasClients ? kvClients : seedData.clients,
-      tasks: hasTasks ? kvTasks : seedData.tasks,
-    };
-
-    if (!hasClients) {
-      await kv.set(clientsKey, hydratedData.clients);
-    }
-
-    if (!hasTasks) {
-      await kv.set(tasksKey, hydratedData.tasks);
-    }
-
-    return hydratedData;
-  }
-
+async function readLocalDatabase(): Promise<DatabaseShape> {
   await ensureDatabaseExists();
   const raw = await fs.readFile(databaseFilePath, "utf-8");
 
@@ -132,19 +98,24 @@ async function readSeedDatabase(): Promise<DatabaseShape> {
   }
 }
 
-async function writeDatabase(data: DatabaseShape) {
-  if (isKvConfigured()) {
-    const kv = await getKvClient();
-    await Promise.all([kv.set(clientsKey, data.clients), kv.set(tasksKey, data.tasks)]);
-    return;
-  }
-
+async function writeLocalDatabase(data: DatabaseShape) {
   await ensureDatabaseExists();
   await fs.writeFile(databaseFilePath, JSON.stringify(data, null, 2), "utf-8");
 }
 
 export async function getClients(): Promise<Client[]> {
-  const data = await readDatabase();
+  if (isSupabaseConfigured) {
+    const supabase = await getSupabaseClient();
+    const result = await supabase.from("clients").select("*").order("company_name", { ascending: true });
+
+    if (result.error) {
+      throw new Error(result.error.message);
+    }
+
+    return (result.data ?? []) as Client[];
+  }
+
+  const data = await readLocalDatabase();
   return data.clients;
 }
 
@@ -155,8 +126,6 @@ interface CreateClientInput {
 }
 
 export async function createClient(input: CreateClientInput): Promise<Client> {
-  const data = await readDatabase();
-
   const client: Client = {
     id: randomUUID(),
     company_name: input.company_name,
@@ -164,13 +133,40 @@ export async function createClient(input: CreateClientInput): Promise<Client> {
     entity_type: input.entity_type,
   };
 
+  if (isSupabaseConfigured) {
+    const supabase = await getSupabaseClient();
+    const result = await supabase.from("clients").insert(client).select("*").single();
+
+    if (result.error) {
+      throw new Error(result.error.message);
+    }
+
+    return result.data as Client;
+  }
+
+  const data = await readLocalDatabase();
   data.clients.push(client);
-  await writeDatabase(data);
+  await writeLocalDatabase(data);
   return client;
 }
 
 export async function getTasksByClient(clientId: string): Promise<ComplianceTask[]> {
-  const data = await readDatabase();
+  if (isSupabaseConfigured) {
+    const supabase = await getSupabaseClient();
+    const result = await supabase
+      .from("tasks")
+      .select("*")
+      .eq("client_id", clientId)
+      .order("due_date", { ascending: true });
+
+    if (result.error) {
+      throw new Error(result.error.message);
+    }
+
+    return (result.data ?? []) as ComplianceTask[];
+  }
+
+  const data = await readLocalDatabase();
   return data.tasks.filter((task) => task.client_id === clientId);
 }
 
@@ -185,8 +181,6 @@ interface CreateTaskInput {
 }
 
 export async function createTask(input: CreateTaskInput): Promise<ComplianceTask> {
-  const data = await readDatabase();
-
   const task: ComplianceTask = {
     id: randomUUID(),
     client_id: input.client_id,
@@ -199,13 +193,44 @@ export async function createTask(input: CreateTaskInput): Promise<ComplianceTask
     created_at: new Date().toISOString(),
   };
 
+  if (isSupabaseConfigured) {
+    const supabase = await getSupabaseClient();
+    const result = await supabase.from("tasks").insert(task).select("*").single();
+
+    if (result.error) {
+      throw new Error(result.error.message);
+    }
+
+    return result.data as ComplianceTask;
+  }
+
+  const data = await readLocalDatabase();
   data.tasks.push(task);
-  await writeDatabase(data);
+  await writeLocalDatabase(data);
   return task;
 }
 
 export async function updateTaskStatus(taskId: string, status: TaskStatus): Promise<ComplianceTask | null> {
-  const data = await readDatabase();
+  if (isSupabaseConfigured) {
+    const supabase = await getSupabaseClient();
+    const result = await supabase
+      .from("tasks")
+      .update({ status })
+      .eq("id", taskId)
+      .select("*")
+      .single();
+
+    if (result.error) {
+      if (result.error.message.toLowerCase().includes("no rows")) {
+        return null;
+      }
+      throw new Error(result.error.message);
+    }
+
+    return result.data as ComplianceTask;
+  }
+
+  const data = await readLocalDatabase();
   const target = data.tasks.find((task) => task.id === taskId);
 
   if (!target) {
@@ -213,6 +238,6 @@ export async function updateTaskStatus(taskId: string, status: TaskStatus): Prom
   }
 
   target.status = status;
-  await writeDatabase(data);
+  await writeLocalDatabase(data);
   return target;
 }
