@@ -13,11 +13,60 @@ import type {
 
 const dataDirectoryPath = path.join(process.cwd(), "data");
 const databaseFilePath = path.join(dataDirectoryPath, "db.json");
+const clientsKey = "compliance:clients";
+const tasksKey = "compliance:tasks";
 
 const defaultDatabase: DatabaseShape = {
   clients: [],
   tasks: [],
 };
+
+interface KvClient {
+  get<T>(key: string): Promise<T | null>;
+  set(key: string, value: unknown): Promise<unknown>;
+}
+
+function resolveKvCredentials() {
+  const url = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  return {
+    url,
+    token,
+  };
+}
+
+function ensureKvEnvAliases() {
+  if (!process.env.KV_REST_API_URL && process.env.UPSTASH_REDIS_REST_URL) {
+    process.env.KV_REST_API_URL = process.env.UPSTASH_REDIS_REST_URL;
+  }
+
+  if (!process.env.KV_REST_API_TOKEN && process.env.UPSTASH_REDIS_REST_TOKEN) {
+    process.env.KV_REST_API_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+  }
+}
+
+function isKvConfigured() {
+  const { url, token } = resolveKvCredentials();
+  return Boolean(url && token);
+}
+
+async function getKvClient(): Promise<KvClient> {
+  ensureKvEnvAliases();
+
+  const dynamicImport = new Function("modulePath", "return import(modulePath)") as (
+    modulePath: string,
+  ) => Promise<{ kv: KvClient }>;
+  const module = await dynamicImport("@vercel/kv");
+  return module.kv as KvClient;
+}
+
+function normalizeDatabase(value: Partial<DatabaseShape> | null | undefined): DatabaseShape {
+  return {
+    clients: Array.isArray(value?.clients) ? value.clients : [],
+    tasks: Array.isArray(value?.tasks) ? value.tasks : [],
+  };
+}
 
 async function ensureDatabaseExists() {
   await fs.mkdir(dataDirectoryPath, { recursive: true });
@@ -30,21 +79,66 @@ async function ensureDatabaseExists() {
 }
 
 async function readDatabase(): Promise<DatabaseShape> {
+  if (isKvConfigured()) {
+    const kv = await getKvClient();
+    const [kvClients, kvTasks] = await Promise.all([
+      kv.get<Client[]>(clientsKey),
+      kv.get<ComplianceTask[]>(tasksKey),
+    ]);
+
+    const hasClients = Array.isArray(kvClients);
+    const hasTasks = Array.isArray(kvTasks);
+
+    if (hasClients && hasTasks) {
+      return {
+        clients: kvClients,
+        tasks: kvTasks,
+      };
+    }
+
+    const seedData = await readSeedDatabase();
+    const hydratedData: DatabaseShape = {
+      clients: hasClients ? kvClients : seedData.clients,
+      tasks: hasTasks ? kvTasks : seedData.tasks,
+    };
+
+    if (!hasClients) {
+      await kv.set(clientsKey, hydratedData.clients);
+    }
+
+    if (!hasTasks) {
+      await kv.set(tasksKey, hydratedData.tasks);
+    }
+
+    return hydratedData;
+  }
+
   await ensureDatabaseExists();
   const raw = await fs.readFile(databaseFilePath, "utf-8");
 
   try {
-    const parsed = JSON.parse(raw) as DatabaseShape;
-    return {
-      clients: Array.isArray(parsed.clients) ? parsed.clients : [],
-      tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
-    };
+    return normalizeDatabase(JSON.parse(raw) as DatabaseShape);
+  } catch {
+    return defaultDatabase;
+  }
+}
+
+async function readSeedDatabase(): Promise<DatabaseShape> {
+  try {
+    const raw = await fs.readFile(databaseFilePath, "utf-8");
+    return normalizeDatabase(JSON.parse(raw) as DatabaseShape);
   } catch {
     return defaultDatabase;
   }
 }
 
 async function writeDatabase(data: DatabaseShape) {
+  if (isKvConfigured()) {
+    const kv = await getKvClient();
+    await Promise.all([kv.set(clientsKey, data.clients), kv.set(tasksKey, data.tasks)]);
+    return;
+  }
+
   await ensureDatabaseExists();
   await fs.writeFile(databaseFilePath, JSON.stringify(data, null, 2), "utf-8");
 }

@@ -25,7 +25,8 @@ export async function PATCH(request: NextRequest, context: Context) {
     }
 
     return NextResponse.json({ task: updatedTask }, { status: 200 });
-  } catch {
+  } catch (error) {
+    console.error("Status update failed", error);
     return NextResponse.json({ error: "Failed to update task status." }, { status: 500 });
   }
 }
