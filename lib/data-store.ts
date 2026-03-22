@@ -19,36 +19,13 @@ const defaultDatabase: DatabaseShape = {
   tasks: [],
 };
 
-interface SupabaseAdminClient {
-  from: (table: string) => {
-    select: (columns?: string) => {
-      order: (column: string, options?: { ascending?: boolean }) => Promise<{ data: unknown[] | null; error: { message: string } | null }>;
-      eq: (column: string, value: string) => {
-        order: (orderColumn: string, options?: { ascending?: boolean }) => Promise<{ data: unknown[] | null; error: { message: string } | null }>;
-      };
-      single: () => Promise<{ data: unknown | null; error: { message: string } | null }>;
-    };
-    insert: (value: unknown | unknown[]) => {
-      select: (columns?: string) => {
-        single: () => Promise<{ data: unknown | null; error: { message: string } | null }>;
-      };
-    };
-    update: (value: unknown) => {
-      eq: (column: string, matchValue: string) => {
-        select: (columns?: string) => {
-          single: () => Promise<{ data: unknown | null; error: { message: string } | null }>;
-        };
-      };
-    };
-  };
-}
-
 function resolveSupabaseConfig() {
-  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
   const key =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
     process.env.SUPABASE_SERVICE_ROLE_KEY ??
     process.env.SUPABASE_ANON_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY;
 
   return {
@@ -62,21 +39,44 @@ function isSupabaseConfigured() {
   return Boolean(url && key);
 }
 
-async function getSupabaseClient(): Promise<SupabaseAdminClient> {
-  const dynamicImport = new Function("modulePath", "return import(modulePath)") as (
-    modulePath: string,
-  ) => Promise<{ createClient: (url: string, key: string, options: unknown) => SupabaseAdminClient }>;
-  const module = await dynamicImport("@supabase/supabase-js");
-
+function getSupabaseConfigOrThrow() {
   const { url, key } = resolveSupabaseConfig();
 
   if (!url || !key) {
     throw new Error("Supabase environment variables are missing.");
   }
 
-  return module.createClient(url, key, {
-    auth: { persistSession: false },
+  return {
+    url,
+    key,
+  };
+}
+
+async function supabaseRequest<T>(pathWithQuery: string, init?: RequestInit): Promise<T> {
+  const { url, key } = getSupabaseConfigOrThrow();
+
+  const response = await fetch(`${url}/rest/v1/${pathWithQuery}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      ...(init?.headers ?? {}),
+    },
+    cache: "no-store",
   });
+
+  const raw = await response.text();
+  const data = raw ? (JSON.parse(raw) as unknown) : null;
+
+  if (!response.ok) {
+    if (data && typeof data === "object" && "message" in data && typeof data.message === "string") {
+      throw new Error(data.message);
+    }
+    throw new Error(`Supabase request failed (${response.status})`);
+  }
+
+  return data as T;
 }
 
 function normalizeDatabase(value: Partial<DatabaseShape> | null | undefined): DatabaseShape {
@@ -114,14 +114,8 @@ async function writeLocalDatabase(data: DatabaseShape) {
 
 export async function getClients(): Promise<Client[]> {
   if (isSupabaseConfigured()) {
-    const supabase = await getSupabaseClient();
-    const result = await supabase.from("clients").select("*").order("company_name", { ascending: true });
-
-    if (result.error) {
-      throw new Error(result.error.message);
-    }
-
-    return (result.data ?? []) as Client[];
+    const clients = await supabaseRequest<Client[]>("clients?select=*&order=company_name.asc");
+    return Array.isArray(clients) ? clients : [];
   }
 
   const data = await readLocalDatabase();
@@ -143,14 +137,19 @@ export async function createClient(input: CreateClientInput): Promise<Client> {
   };
 
   if (isSupabaseConfigured()) {
-    const supabase = await getSupabaseClient();
-    const result = await supabase.from("clients").insert(client).select("*").single();
+    const created = await supabaseRequest<Client[]>("clients?select=*", {
+      method: "POST",
+      headers: {
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify(client),
+    });
 
-    if (result.error) {
-      throw new Error(result.error.message);
+    if (!Array.isArray(created) || created.length === 0) {
+      throw new Error("Failed to create client.");
     }
 
-    return result.data as Client;
+    return created[0];
   }
 
   const data = await readLocalDatabase();
@@ -161,18 +160,10 @@ export async function createClient(input: CreateClientInput): Promise<Client> {
 
 export async function getTasksByClient(clientId: string): Promise<ComplianceTask[]> {
   if (isSupabaseConfigured()) {
-    const supabase = await getSupabaseClient();
-    const result = await supabase
-      .from("tasks")
-      .select("*")
-      .eq("client_id", clientId)
-      .order("due_date", { ascending: true });
-
-    if (result.error) {
-      throw new Error(result.error.message);
-    }
-
-    return (result.data ?? []) as ComplianceTask[];
+    const tasks = await supabaseRequest<ComplianceTask[]>(
+      `tasks?select=*&client_id=eq.${encodeURIComponent(clientId)}&order=due_date.asc`,
+    );
+    return Array.isArray(tasks) ? tasks : [];
   }
 
   const data = await readLocalDatabase();
@@ -203,14 +194,19 @@ export async function createTask(input: CreateTaskInput): Promise<ComplianceTask
   };
 
   if (isSupabaseConfigured()) {
-    const supabase = await getSupabaseClient();
-    const result = await supabase.from("tasks").insert(task).select("*").single();
+    const created = await supabaseRequest<ComplianceTask[]>("tasks?select=*", {
+      method: "POST",
+      headers: {
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify(task),
+    });
 
-    if (result.error) {
-      throw new Error(result.error.message);
+    if (!Array.isArray(created) || created.length === 0) {
+      throw new Error("Failed to create task.");
     }
 
-    return result.data as ComplianceTask;
+    return created[0];
   }
 
   const data = await readLocalDatabase();
@@ -221,22 +217,22 @@ export async function createTask(input: CreateTaskInput): Promise<ComplianceTask
 
 export async function updateTaskStatus(taskId: string, status: TaskStatus): Promise<ComplianceTask | null> {
   if (isSupabaseConfigured()) {
-    const supabase = await getSupabaseClient();
-    const result = await supabase
-      .from("tasks")
-      .update({ status })
-      .eq("id", taskId)
-      .select("*")
-      .single();
+    const updated = await supabaseRequest<ComplianceTask[]>(
+      `tasks?id=eq.${encodeURIComponent(taskId)}&select=*`,
+      {
+        method: "PATCH",
+        headers: {
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify({ status }),
+      },
+    );
 
-    if (result.error) {
-      if (result.error.message.toLowerCase().includes("no rows")) {
-        return null;
-      }
-      throw new Error(result.error.message);
+    if (!Array.isArray(updated) || updated.length === 0) {
+      return null;
     }
 
-    return result.data as ComplianceTask;
+    return updated[0];
   }
 
   const data = await readLocalDatabase();
