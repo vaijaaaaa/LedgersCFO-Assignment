@@ -19,3 +19,26 @@ create table if not exists tasks (
 
 create index if not exists idx_tasks_client_id on tasks(client_id);
 create index if not exists idx_tasks_due_date on tasks(due_date);
+
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on table clients to anon, authenticated;
+grant select, insert, update, delete on table tasks to anon, authenticated;
+
+alter table clients enable row level security;
+alter table tasks enable row level security;
+
+drop policy if exists "clients_all_anon" on clients;
+create policy "clients_all_anon"
+on clients
+for all
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "tasks_all_anon" on tasks;
+create policy "tasks_all_anon"
+on tasks
+for all
+to anon, authenticated
+using (true)
+with check (true);

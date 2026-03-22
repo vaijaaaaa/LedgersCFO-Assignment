@@ -73,11 +73,13 @@ npm run start
 1. Create a Supabase project
 2. In Supabase SQL Editor, run `supabase-schema.sql`
 3. In Vercel project environment variables, set:
-	- `SUPABASE_URL`
-	- `SUPABASE_SERVICE_ROLE_KEY`
+	- `SUPABASE_URL` (or `NEXT_PUBLIC_SUPABASE_URL`)
+	- one key from: `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, or `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY`
 4. Redeploy
 
 Without Supabase env vars, app falls back to local JSON storage (works locally, not for persistent writes on serverless deploys).
+
+For this MVP, `supabase-schema.sql` includes grants and permissive RLS policies so anon/public keys can perform CRUD.
 
 ## Deployment (Vercel)
 
