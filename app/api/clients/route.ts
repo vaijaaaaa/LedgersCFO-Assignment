@@ -8,8 +8,10 @@ export async function GET() {
   try {
     const clients = await getClients();
     return NextResponse.json({ clients }, { status: 200 });
-  } catch {
-    return NextResponse.json({ error: "Failed to load clients." }, { status: 500 });
+  } catch (error) {
+    console.error("Failed to load clients", error);
+    const message = error instanceof Error ? error.message : "Failed to load clients.";
+    return NextResponse.json({ error: "Failed to load clients.", detail: message }, { status: 500 });
   }
 }
 
@@ -35,7 +37,9 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ client }, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Failed to create client." }, { status: 500 });
+  } catch (error) {
+    console.error("Failed to create client", error);
+    const message = error instanceof Error ? error.message : "Failed to create client.";
+    return NextResponse.json({ error: "Failed to create client.", detail: message }, { status: 500 });
   }
 }

@@ -19,8 +19,10 @@ export async function GET(_request: NextRequest, context: Context) {
   try {
     const tasks = await getTasksByClient(clientId);
     return NextResponse.json({ tasks }, { status: 200 });
-  } catch {
-    return NextResponse.json({ error: "Failed to load tasks." }, { status: 500 });
+  } catch (error) {
+    console.error("Failed to load tasks", error);
+    const message = error instanceof Error ? error.message : "Failed to load tasks.";
+    return NextResponse.json({ error: "Failed to load tasks.", detail: message }, { status: 500 });
   }
 }
 
@@ -62,7 +64,9 @@ export async function POST(request: NextRequest, context: Context) {
     });
 
     return NextResponse.json({ task }, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Failed to create task." }, { status: 500 });
+  } catch (error) {
+    console.error("Failed to create task", error);
+    const message = error instanceof Error ? error.message : "Failed to create task.";
+    return NextResponse.json({ error: "Failed to create task.", detail: message }, { status: 500 });
   }
 }
